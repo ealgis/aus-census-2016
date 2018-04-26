@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 #
-# EAlGIS loader: Australian Census 2011; Data Pack 1
+# EAlGIS loader: Australian Census 2016; Data Pack 1
 #
 
 from ealgis_common.loaders import ZipAccess, ShapeLoader
@@ -12,50 +12,48 @@ import sqlalchemy
 
 
 logger = make_logger(__name__)
-SHAPE_SCHEMA = 'aus_census_2011_shapes'
+SHAPE_SCHEMA = 'aus_census_2016_shapes'
 SHAPE_ZIPS = [
-    ('ced', '2011_CED_shape.zip'),
-    ('gccsa', '2011_GCCSA_POW_shape.zip'),
-    ('iare', '2011_IARE_shape.zip'),
-    ('iloc', '2011_ILOC_shape.zip'),
-    ('ireg', '2011_IREG_shape.zip'),
-    ('lga', '2011_LGA_POW_shape.zip'),
-    ('poa', '2011_POA_shape.zip'),
-    ('ra', '2011_RA_shape.zip'),
-    ('sa1', '2011_SA1_shape.zip'),
-    ('sa2', '2011_SA2_POW_shape.zip'),
-    ('sa3', '2011_SA3_POW_shape.zip'),
-    ('sa4', '2011_SA4_POW_shape.zip'),
-    ('sed', '2011_SED_shape.zip'),
-    ('sla', '2011_SLA_POW_shape.zip'),
-    ('sosr', '2011_SOSR_shape.zip'),
-    ('sos', '2011_SOS_shape.zip'),
-    ('ssc', '2011_SSC_shape.zip'),
-    ('ste', '2011_STE_POW_shape.zip'),
-    ('sua', '2011_SUA_shape.zip'),
-    ('ucl', '2011_UCL_shape.zip'),
+    ('ced', '2016_CED_shape.zip'),
+    ('gccsa', '2016_GCCSA_shape.zip'),
+    ('iare', '2016_IARE_shape.zip'),
+    ('iloc', '2016_ILOC_shape.zip'),
+    ('ireg', '2016_IREG_shape.zip'),
+    ('lga', '2016_LGA_shape.zip'),
+    ('poa', '2016_POA_shape.zip'),
+    ('ra', '2016_RA_shape.zip'),
+    ('sa1', '2016_SA1_shape.zip'),
+    ('sa2', '2016_SA2_shape.zip'),
+    ('sa3', '2016_SA3_shape.zip'),
+    ('sa4', '2016_SA4_shape.zip'),
+    ('sed', '2016_SED_shape.zip'),
+    ('sos', '2016_SOS_shape.zip'),
+    ('sosr', '2016_SOSR_shape.zip'),
+    ('ssc', '2016_SSC_shape.zip'),
+    ('ste', '2016_STE_shape.zip'),
+    ('sua', '2016_SUA_shape.zip'),
+    ('ucl', '2016_UCL_shape.zip'),
 ]
 SHAPE_LINKAGE = {
-    'ced': ('ced_code', None, 'Commonwealth Electoral Division'),
-    'gccsa': ('gccsa_code', None, 'Greater Capital City Statistical Areas'),
-    'iare': ('iare_code', None, 'Indigenous Area'),
-    'iloc': ('iloc_code', None, 'Indigenous Location'),
-    'ireg': ('ireg_code', None, 'Indigenous Region'),
-    'lga': ('lga_code', None, 'Local Government Area'),
-    'poa': ('poa_code', None, 'Postal Areas'),
-    'ra': ('ra_code', None, 'Remoteness Area'),
+    'ced': ('ced_code16', None, 'Commonwealth Electoral Division'),
+    'gccsa': ('gcc_code16', None, 'Greater Capital City Statistical Areas'),
+    'iare': ('iar_code16', None, 'Indigenous Area'),
+    'iloc': ('ilo_code16', None, 'Indigenous Location'),
+    'ireg': ('ire_code16', None, 'Indigenous Region'),
+    'lga': ('lga_code16', None, 'Local Government Area'),
+    'poa': ('poa_code16', None, 'Postal Areas'),
+    'ra': ('ra_code16', None, 'Remoteness Area'),
     'sa1': ('sa1_7digit', sqlalchemy.types.Integer, 'Statistical Area Level 1'),
-    'sa2': ('sa2_main', None, 'Statistical Area Level 2'),
-    'sa3': ('sa3_code', None, 'Statistical Area Level 3'),
-    'sa4': ('sa4_code', None, 'Statistical Area Level 4'),
-    'sed': ('sed_code', None, 'State Electoral Division'),
-    'sla': ('sla_main', None, 'Statistical Local Areas'),
-    'sos': ('sos_code', None, 'Section of State'),
-    'sosr': ('sosr_code', None, 'Section of State Range'),
-    'ssc': ('ssc_code', None, 'State Suburb'),
-    'ste': ('state_code', None, 'State/Territory'),
-    'sua': ('sua_code', None, 'Significant Urban Areas'),
-    'ucl': ('ucl_code', None, 'Urban Centre/Locality')
+    'sa2': ('sa2_main16', None, 'Statistical Area Level 2'),
+    'sa3': ('sa3_code16', None, 'Statistical Area Level 3'),
+    'sa4': ('sa4_code16', None, 'Statistical Area Level 4'),
+    'sed': ('sed_code16', None, 'State Electoral Division'),
+    'sos': ('sos_code16', None, 'Section of State'),
+    'sosr': ('sosrcode16', None, 'Section of State Range'),
+    'ssc': ('ssc_code16', None, 'State Suburb'),
+    'ste': ('ste_code16', None, 'State/Territory'),
+    'sua': ('sua_code16', None, 'Significant Urban Areas'),
+    'ucl': ('ucl_code16', None, 'Urban Centre/Locality')
 }
 
 
@@ -82,8 +80,8 @@ def load_shapes(factory, census_dir, tmpdir):
             idx.create(loader.engine)
 
     loader.set_metadata(
-        name='ABS Census 2011',
-        description="2011 Australian Census: Spatial Data")
+        name='ABS Census 2016',
+        description="2016 Australian Census: Spatial Data")
     loader.session.commit()
     load_shapes()
     return loader.result()
