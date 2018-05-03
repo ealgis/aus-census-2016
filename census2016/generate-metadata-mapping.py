@@ -52,27 +52,6 @@ def getMetadataURLs(sheet):
     return metadataUrls
 
 
-# def findSerises(sheet):
-#     def findFirstColumnACellWithAValue(sheet):
-#         for row in sheet.iter_rows(row_offset=findStartRow(sheet)):
-#             if row[0].value is not None:
-#                 return row[0].row
-#         raise Exception("Failed to find the first data row.")
-
-#     serises = []
-#     for row in sheet.iter_rows(row_offset=findFirstColumnACellWithAValue(sheet) - 3):
-#         hasValuesInColumnsOtherThanB = False
-#         for cell in row:
-#             # Check for empty strings to handle cases where columns contain empty strings (rather than None)
-#             # or contain strings just containing whitespace.
-#             if cell.column != "B" and cell.value is not None and str(cell.value).strip() != "":
-#                 hasValuesInColumnsOtherThanB = True
-#                 break
-#         if hasValuesInColumnsOtherThanB is False and row[1].value is not None and row[1].value.isupper():
-#             serises.append(row[1].value.strip())
-#     return serises
-
-
 def getNotes(sheet):
     def getFirstCellFromRow(row):
         # if sheetName == "T 32d" or sheetName == "T 33" or\
@@ -183,67 +162,6 @@ def mergeNotesFromMultipleProfileTables(notes, newNotes):
     return mergedNotes
 
 
-# def validateMetadataMapping(datapackMetadataFile, metadataMapping):
-#     def formatRowLabel(rowLabel):
-#         # Dependent_children_aged_21_24_years_female_parent_Total_male_parent_Language_and_proficiency_in_English_not_stated
-#         return rowLabel.replace(" ", "_").replace("-", "_").replace(":", "")
-
-#     def formatSeriesName(seriesName):
-#         return seriesName.replace(" ", "_").replace("-", "_")
-
-#     def formatCellHeading(cellHeading):
-#         return cellHeading.replace(" ", "_").replace("-", "_").replace(":", "")
-
-#     xl = openpyxl.load_workbook(os.path.join(base_dir, datapackMetadataFile), read_only=True)
-#     cellDescriptorWorksheet = xl["Cell descriptors information"]
-
-#     columnMapping = {}
-#     for row in cellDescriptorWorksheet.iter_rows(row_offset=4):
-#         longDescriptor = row[2].value
-#         dataPack = row[3].value
-#         profileTable = row[4].value
-#         heading = row[5].value
-
-#         if profileTable not in columnMapping:
-#             columnMapping[profileTable] = []
-
-#         columnMapping[profileTable].append({
-#             "longDescriptor": longDescriptor,
-#             "dataPack": dataPack,
-#             "profileTable": profileTable,
-#             "heading": heading,
-#         })
-
-#     for table in metadataMapping["tables"]:
-#         # if "B13a" in table["profileTableNames"]:
-#         #     continue
-#         print(", ".join(table["profileTableNames"]))
-
-#         for profileTableName in table["profileTableNames"]:
-#             if profileTableName not in columnMapping or len(columnMapping[profileTableName]) == 0:
-#                 raise ParserWarning("Unable to find any matching columns for profile table '{}'.".format(profileTableName))
-#                 continue
-
-#             if len(table["serises"]) == 0:
-#                 numberOfRows = len([r for r in columnMapping[profileTableName]])
-#                 if numberOfRows > 0:
-#                     print("Rows: {}".format(numberOfRows))
-#                 else:
-#                     raise ParserWarning("Could not find any matching columns for tables '{}'.".format(", ".join(table["profileTableNames"])))
-
-#         for seriesName in table["serises"]:
-#             numberOfRows = 0
-#             for profileTableName in table["profileTableNames"]:
-#                 numberOfRows = len([r for r in columnMapping[profileTableName] if r["heading"].endswith("|{}".format(seriesName))])
-#                 if numberOfRows > 0:
-#                     break
-#             if numberOfRows > 0:
-#                 print("{}: {}".format(seriesName, numberOfRows))
-#             else:
-#                 raise ParserWarning("Could not find any matching columns for series '{}' in tables '{}'.".format(seriesName, ", ".join(table["profileTableNames"])))
-
-#         print
-
 base_dir = "/app/data/2016 Datapacks"
 
 TABLES = [
@@ -284,7 +202,6 @@ for table in TABLES:
 
         sheet = xl[sheetName]
 
-        # serises = findSerises(sheet)
         metadataUrls = getMetadataURLs(sheet)
         notes = getNotes(sheet)
 
@@ -302,25 +219,3 @@ for table in TABLES:
     json_path = "metadata_mappings/{}_metadata_mapping.json".format(abbreviation.lower())
     with open(json_path, "w") as f:
         f.write(json.dumps(metadataMapping, indent=2, sort_keys=True))
-
-
-# Validate Metadata Mapping
-# with open("ip_metadata_mapping.json", "r") as f:
-#     metadataMapping = json.loads(f.read())
-
-# validateMetadataMapping("Metadata_2011_BCP_DataPack.xlsx", metadataMapping)
-# validateMetadataMapping("Metadata_2011_IP_DataPack.xlsx", metadataMapping)
-
-
-# Basic Community Profile
-# Merged: B12a-c, B17a-b, B23a-b, B40a-b, B41a-b, B42a-b, B43a-c
-# Special Cases (Merged):
-# B01a-b. Merged profileTableNames and notes by-hand
-# B02. Manually created record and compiled notes.
-# B04. Manually created record and compiled notes.
-# B10a-b. Merged profileTableNames. Took notes from B10a.
-# B13a-b. Merged profileTableNames and notes by-hand. Manually set profileTableName to "B13" to match what's in the metadata.
-
-
-# General Community Profile
-# Merged G02 (Selected Medians and Averages) by-hand
