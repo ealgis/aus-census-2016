@@ -24,13 +24,13 @@ function postgreswait {
 defaults
 postgreswait
 
-if [ ! -d "data/2011 Datapacks BCP_IP_TSP_PEP_ECP_WPP_ERP_Release 3" ]; then
-    echo "Download the Australian Census 2011 and extract in data/"
-    echo
-    echo "https://dl.dropboxusercontent.com/u/10671102/census/2011%20Datapacks%20BCP_IP_TSP_PEP_ECP_WPP_ERP_Release%203.7z"
+if [ ! -d "data/2016 Datapacks" ]; then
+    echo "Download the Australian Census 2016 and extract in data/"
+    # echo
+    # echo "https://dl.dropboxusercontent.com/u/10671102/census/2011%20Datapacks%20BCP_IP_TSP_PEP_ECP_WPP_ERP_Release%203.7z"
     exit 1
 fi
 
-echo "loading the 2011 Australian Census"
+echo "loading the 2016 Australian Census"
 
 python /app/recipe.py
