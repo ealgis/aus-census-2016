@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 #
-# EAlGIS loader: Australian Census 2011; Data Pack 1
+# EAlGIS loader: Australian Census 2016; Data Pack 1
 #
 
 import re
@@ -17,7 +17,7 @@ from collections import OrderedDict
 from ealgis_common.loaders import RewrittenCSV, CSVLoader
 from ealgis_common.util import alistdir, make_logger
 from .shapes import SHAPE_LINKAGE, SHAPE_SCHEMA
-from .attrs_repair import repair_census_metadata, repair_column_series_census_metadata
+from .attrs_repair import repair_census_metadata_first_pass, repair_census_metadata, repair_column_series_census_metadata, repair_series_name
 
 logger = make_logger(__name__)
 
@@ -43,7 +43,7 @@ def parseColumnMetadata(table_number, column_name, metadata):
 
     def formatColumnLabel(columnLabel):
         """ Format the column label (kind) ready for parsing. """
-        return columnLabel.strip().replace(": ", " ").replace(":", "").replace("-", " ").replace("$", "").replace(":", "").replace("\\", "").replace("&", "and").replace("/ ", " ").replace("/", " ").replace("etc.", "etc").replace(", ", " ")
+        return columnLabel.strip().replace(": ", " ").replace(":", " ").replace("-", " ").replace("$", "").replace(":", "").replace("\\", "").replace("&", "and").replace("/ ", " ").replace("/", " ").replace("etc.", "etc").replace(", ", " ").replace("_", " ")
 
     def formatHumanReadableRowLabel(rowLabel, rowType):
         rowLabel = rowLabel.replace("–", "-").strip()
@@ -62,16 +62,21 @@ def parseColumnMetadata(table_number, column_name, metadata):
     def formatHumanReadableColumnLabel(columnLabel):
         return columnLabel.strip()
 
+    # if table_number != "i15":
+    #     return {}
+    # if column_name != "i2688":
+    #     return {}
+
     metadata_original = metadata.copy()
-    metadata = repair_census_metadata(table_number, column_name.lower(), metadata)
-    metadata["type"] = metadata["type"].strip().replace("_", " ")
+    metadata = repair_census_metadata_first_pass(table_number, column_name.lower(), metadata)
+    seriesName = repair_series_name(table_number, column_name.lower(), metadata, getSeriesName(metadata["kind"]))
+    metadata = repair_census_metadata(table_number, column_name.lower(), metadata, seriesName)
 
     columnType = metadata["type"].strip()
     columnLabel = formatColumnLabel(getColumnLabel(metadata["kind"]))
-    seriesName = getSeriesName(metadata["kind"])
 
     # Special case for B02 and P02 - Selected Medians and Averages
-    if table_number == "b02" or table_number == "p02":
+    if table_number == "g02" or table_number == "i04" or table_number == "t02" or table_number == "p02":
         # No named columns here, just rows
         metadata["seriesName"] = None
         metadata["kind"] = ""
@@ -81,25 +86,34 @@ def parseColumnMetadata(table_number, column_name, metadata):
         # e.g. Persons Speaks other language and speaks English Total Year of arrival 2010
         # Series = Persons, Row = Speaks other language and speaks English Total, Column = Year of arrival 2010
         seriesName = formatSeriesName(seriesName)
-        match = re.search(r"(?P<seriesName>{seriesName}) (?P<rowLabel>[A-z0-9\s]+) (?P<columnLabel>{columnLabel})".format(seriesName=seriesName, columnLabel=columnLabel), columnType, re.IGNORECASE)
+        regex = "(?P<seriesName>{seriesName}) (?P<rowLabel>[A-z0-9\s]+) (?P<columnLabel>{columnLabel})".format(seriesName=seriesName.replace(":", ""), columnLabel=columnLabel)
+        match = re.search(regex, columnType, re.IGNORECASE)
 
         if match is not None:
             metadata["seriesName"] = seriesName
             metadata["type"] = formatHumanReadableRowLabel(match.group("rowLabel"), metadata["type"])
             metadata["kind"] = formatHumanReadableColumnLabel(getColumnLabel(metadata["kind"]))
+        # else:
+        #     print("regex 1", regex)
+        #     print("columnType", columnType)
 
     else:
         # {ROW LABEL} {COLUMN LABEL}
         # e.g. 150 299 Dwelling structure Flat unit or apartment In a 1 or 2 storey block
         # Row = 150 299, Column = Dwelling structure Flat unit or apartment In a 1 or 2 storey block
-        match = re.search(r"(?P<rowLabel>[A-z0-9\s]+) (?P<columnLabel>{columnLabel})".format(columnLabel=columnLabel), columnType, re.IGNORECASE)
+        regex = "(?P<rowLabel>[A-z0-9\s]+) (?P<columnLabel>{columnLabel})".format(columnLabel=columnLabel)
+        match = re.search(regex, columnType, re.IGNORECASE)
+
         if match is not None:
             metadata["seriesName"] = None
             metadata["type"] = formatHumanReadableRowLabel(match.group("rowLabel"), metadata["type"])
             metadata["kind"] = formatHumanReadableColumnLabel(metadata["kind"])
+        # else:
+        #     print("regex 2", regex)
+        #     print("columnType", columnType)
 
     if "seriesName" not in metadata:
-        raise Exception("[{table_number}] Failed to parse column {column_name}: Fix '{kind}' // With '{type}'. Col label: '{columnLabel}'.".format(table_number=table_number, column_name=column_name, kind=metadata_original["kind"], type=metadata_original["type"].strip().replace("_", " "), columnLabel=columnLabel))
+        raise Exception("[{table_number}] Error parsing column {column_name}: Use \"{type}\" to fix \"{kind}\". Column Label is \"{column_label}\".".format(table_number=table_number.upper(), column_name=column_name, kind=metadata_original["kind"], type=metadata_original["type"].strip().replace("_", " "), column_label=columnLabel))
 
     # Discard - seriesName is now only used to validate parsing
     del metadata["seriesName"]
@@ -125,6 +139,7 @@ def load_metadata_table_serises(loader, census_dir, xlsx_name):
         return None if "|" not in kind else kind.split("|")[1]
 
     col_meta = {}
+    col_mapping = {}
 
     fname = os.path.join(census_dir + '/Metadata/', xlsx_name)
     logger.info("parsing metadata: %s" % (fname))
@@ -134,8 +149,8 @@ def load_metadata_table_serises(loader, census_dir, xlsx_name):
         return ([t.value for t in r] for r in sheet.iter_rows() if r[0].value is not None)
 
     def skip_to_descriptors(it):
-        for row in sheet_iter:
-            if row[0] != "Sequential":
+        for row in it:
+            if row[0] != "Cell descriptors":
                 next(it)
             else:
                 break
@@ -144,7 +159,9 @@ def load_metadata_table_serises(loader, census_dir, xlsx_name):
     skip_to_descriptors(sheet_iter)
     for row in sheet_iter:
         name = row[0]
-        if not name:
+        # Bodge bodge. Fix in skip_to_descriptors()
+        # We need to skip twice to get past the header rows
+        if not name or name == "Sequential":
             continue
         name = name.lower()
         column_name, short_name, long_name, datapack_file, profile_table, column_heading = row[0:6]
@@ -154,6 +171,9 @@ def load_metadata_table_serises(loader, census_dir, xlsx_name):
 
         column_heading = repair_column_series_census_metadata(table_number, column_name.lower(), str(column_heading).strip())
         seriseName = getSeriesName(column_heading)
+
+        col_mapping[short_name] = column_name
+
         if seriseName is not None:
             if table_number not in col_meta:
                 col_meta[table_number] = {}
@@ -161,16 +181,18 @@ def load_metadata_table_serises(loader, census_dir, xlsx_name):
             if seriseName not in col_meta[table_number]:
                 col_meta[table_number][seriseName] = {
                     "columns": [],
+                    "columns_seq": [],
                     "datapackNames": [],
                 }
 
-            col_meta[table_number][seriseName]["columns"].append(column_name)
+            col_meta[table_number][seriseName]["columns"].append(short_name)  # The shapefile-esque short column name e.g. Tot_P_M
+            col_meta[table_number][seriseName]["columns_seq"].append(column_name)  # The sequence_id e.g. G100
 
             if datapack_file.lower() not in col_meta[table_number][seriseName]["datapackNames"]:
                 col_meta[table_number][seriseName]["datapackNames"].append(datapack_file.lower())
     del wb
 
-    return col_meta
+    return col_meta, col_mapping
 
 
 def load_metadata(loader, census_dir, xlsx_name, data_tables, columns_by_series):
@@ -190,21 +212,21 @@ def load_metadata(loader, census_dir, xlsx_name, data_tables, columns_by_series)
 
     def skip_to_descriptors(it):
         for row in sheet_iter:
-            if row[0] != "Sequential":
+            if row[0] != "Cell descriptors":
                 next(it)
             else:
                 break
 
     def get_metadata_mapping():
         files = {}
-        for json_file in glob.glob(os.path.join("./", "census2011", "*_metadata_mapping.json")):
+        for json_file in glob.glob(os.path.join("./", "census2016", "metadata_mappings", "*_metadata_mapping.json")):
             with open(json_file, "r") as f:
                 files = {**files, **json.load(f)["tables"]}
         return files
 
     def get_topic_to_table_mapping():
         mapping = {}
-        for json_file in glob.glob(os.path.join("./", "census2016", "*_topic_mapping.json")):
+        for json_file in glob.glob(os.path.join("./", "census2016", "metadata_mappings", "*_topic_mapping.json")):
             with open(json_file, "r") as f:
                 for topic_name, tables in json.load(f).items():
                     for table_number in tables:
@@ -227,10 +249,14 @@ def load_metadata(loader, census_dir, xlsx_name, data_tables, columns_by_series)
     skip_to_descriptors(sheet_iter)
     for row in sheet_iter:
         name = row[0]
-        if not name:
+        # Bodge bodge. Fix in skip_to_descriptors()
+        # We need to skip twice to get past the header rows
+        if not name or name == "Sequential":
             continue
+
         name = name.lower()
         short_name, long_name, datapack_file, profile_table, column_heading = row[1:6]
+
         datapack_file = datapack_file.lower()
         m = re.match('^([A-Za-z]+[0-9]+)([a-z]+)?$', datapack_file)
         table_number = m.groups()[0]  # b46a -> b46
@@ -262,7 +288,7 @@ def load_metadata(loader, census_dir, xlsx_name, data_tables, columns_by_series)
         meta["series"] = None
         meta["family"] = table_number
 
-        # Merge JSON formatted metadata
+        # Merge JSON formatted metadata from the sequential template XLSs
         if table_number.upper() in metadata_mapping:
             meta = {**meta, **metadata_mapping[table_number.upper()]}
 
@@ -282,17 +308,16 @@ def load_metadata(loader, census_dir, xlsx_name, data_tables, columns_by_series)
             meta["series"] = series_name
 
             # Filter all columns for the table down to just those columns in this series
-            columns = [(col_name, col) for col_name, col in col_meta[table_number] if col_name.upper() in columns_by_series[table_number][series_name]["columns"]]
+            columns = [(col_name, col) for col_name, col in col_meta[table_number] if col_name.upper() in columns_by_series[table_number][series_name]["columns_seq"]]
 
         loader.set_table_metadata(table_name, meta)
         loader.register_columns(table_name, columns)
 
 
-def load_datapacks(loader, census_dir, tmpdir, packname, abbrev, geo_gid_mapping, columns_by_series):
+def load_datapacks(loader, census_dir, tmpdir, packname, abbrev, geo_gid_mapping, columns_by_series, col_mapping):
     def get_csv_files():
         files = []
         for geography in alistdir(d):
-            # if "/SA3" in geography or "/SA1" in geography or "/LGA" in geography:
             logger.info("%s: Geograpy - %s" % (abbrev, geography))
 
             g = os.path.join(geography, "*.csv")
@@ -313,11 +338,15 @@ def load_datapacks(loader, census_dir, tmpdir, packname, abbrev, geo_gid_mapping
             if csv_path.endswith(".tmp.csv"):
                 continue
 
-            filename = os.path.basename(csv_path)
-            datapack_file = filename.split('_', 1)[1].lower()
+            filename = os.path.basename(csv_path)  # 2016Census_I10B_AUS_IREG.csv
+            datapack_file = filename.split('_', 1)[1].lower()  # i10b_aus_ireg.csv
             m = re.match('^([A-Za-z]+[0-9]+)([a-z]+)?_.+$', datapack_file)
-            table_number = m.groups()[0]
-            geography_name = filename.split('_')[3].lower()
+            table_number = m.groups()[0]  # i10
+            filename_parts = filename.split('_')
+            if len(filename_parts) == 4:
+                geography_name = filename_parts[3].split(".")[0].lower()  # ireg
+            else:
+                geography_name = "aust"
 
             if geography_name not in by_table:
                 by_table[geography_name] = {}
@@ -333,13 +362,16 @@ def load_datapacks(loader, census_dir, tmpdir, packname, abbrev, geo_gid_mapping
             with open(csv_path, "r") as merged_csv_file:
                 # Open a new reader for each series as a means of resetting the pointer to the start of the file
                 reader = csv.DictReader(merged_csv_file)
+                # Need to use this rather than the hard-coded "region_id" fieldname from 2011 due
+                # to a change in the structure of the CSV datapacks.
+                region_id_column_name = reader.fieldnames[0]  # Per SHAPE_LINKAGE (e.g. AUS_CODE_2016)
 
                 series_csv_path = csv_path.replace(table_name.upper(), "{}S{}".format(table_name.upper(), key + 1))
                 if not series_csv_path.endswith(".tmp.csv"):
                     series_csv_path = series_csv_path.replace(".csv", ".tmp.csv")
 
                 # https://stackoverflow.com/a/39923823/7368493
-                fieldnames = ["region_id"] + columns_by_series[table_name][series_name]["columns"]
+                fieldnames = [region_id_column_name] + columns_by_series[table_name][series_name]["columns"]
                 fieldnames_set = set(fieldnames)
                 # logger.info("Fieldnames ({}): {}".format(len(fieldnames), fieldnames))
 
@@ -361,73 +393,19 @@ def load_datapacks(loader, census_dir, tmpdir, packname, abbrev, geo_gid_mapping
 
         return csv_files
 
-    def split_datapack_csvs_by_series(columns_by_series, table_name, csv_paths):
-        csv_files = []
-
-        # logger.info("Start opening: {}".format(csv_path))
-        # with open(csv_path, "r") as f:
-        #     reader = list(csv.DictReader(f))
-        # logger.info("Opened!")
-
-        logger.info("Table Name: {}".format(table_name))
-        logger.info("CSV Paths: {}".format([os.path.basename(path) for path in csv_paths]))
-        # logger.info("CSV Paths 2: {}".format([os.path.basename(path).split("_")[1].lower() for path in csv_paths]))
-
-        for key, series_name in enumerate(columns_by_series[table_name]):
-            logger.info("")
-            logger.info("Series Name: {}".format(series_name))
-
-            # logger.info("0: {}".format(os.path.basename(csv_paths[0])))
-            profiletable_name = os.path.basename(csv_paths[0]).split('_')[1]
-            # logger.info("Profile Table Path Name: {}".format(profiletable_name))
-            base_csv_path = csv_paths[0].replace("_{}_".format(profiletable_name), "_{}_".format(table_name.upper())).replace(".csv", ".tmp.csv")
-            # logger.info("Merged Path: {}".format(os.path.basename(merged_csv_path)))
-            series_csv_path = base_csv_path.replace(table_name.upper(), "{}S{}".format(table_name.upper(), key + 1))
-            if not series_csv_path.endswith(".tmp.csv"):
-                series_csv_path = series_csv_path.replace(".csv", ".tmp.csv")
-            logger.info("Series CSV Path: {}".format(os.path.basename(series_csv_path)))
-
-            # https://stackoverflow.com/a/39923823/7368493
-            fieldnames = ["region_id"] + columns_by_series[table_name][series_name]["columns"]
-            fieldnames_set = set(fieldnames)
-            logger.info("Fieldnames ({}): {}".format(len(fieldnames), fieldnames))
-            logger.info("Profile Tables: {}".format(columns_by_series[table_name][series_name]["datapackNames"]))
-
-            with open(series_csv_path, "w") as f:
-                writer = csv.DictWriter(f, fieldnames)
-                writer.writeheader()
-
-                # logger.info("Profile Table CSVs Test: {}".format([os.path.basename(path) for path in csv_paths if os.path.basename(path).split("_")[1].lower() in columns_by_series[table_name][series_name]["datapackNames"]]))
-                profileTablesCSVPaths = [path for path in csv_paths if os.path.basename(path).split("_")[1].lower() in columns_by_series[table_name][series_name]["datapackNames"]]
-                logger.info("Profile Table CSVs: {}".format([os.path.basename(path) for path in profileTablesCSVPaths]))
-
-                for i, csv_path in enumerate(profileTablesCSVPaths):
-                    logger.info("CSV File: {}".format(os.path.basename(csv_path)))
-
-                    with open(csv_path, "r") as f:
-                        reader = list(csv.DictReader(f))
-
-                    for row in reader:
-                        # Use a dictionary comprehension to iterate over the key, value pairs
-                        # discarding those pairs whose key is not in the set
-                        filtered_row = dict(
-                            (k, v) for k, v in row.items() if k in fieldnames_set
-                        )
-                        # logger.info("Found: {}".format(len(filtered_row)))
-                        writer.writerow(filtered_row)
-
-            logger.info("%s-%s: Created CSV file for series '%s' - %s" % (abbrev, table_name.upper(), series_name, os.path.basename(series_csv_path)))
-            csv_files.append(series_csv_path)
-
-        return csv_files
-
     def merge_and_get_csv_files_by_table_and_series():
         csv_files_by_geog_and_table = get_csv_files_by_geography_and_table()
         csv_files = []
 
         for geography_name, tables in csv_files_by_geog_and_table.items():
+            # if geography_name != "lga":
+            #     continue
+
             for table_name, csv_paths in csv_files_by_geog_and_table[geography_name].items():
                 # Merge the separate profile table/datapack CSVs into a single new  CSV file based on region_id (first column)
+                # if table_name != "g06":
+                #     continue
+
                 if len(csv_paths) > 1:
                     dicts = []
 
@@ -479,10 +457,10 @@ def load_datapacks(loader, census_dir, tmpdir, packname, abbrev, geo_gid_mapping
                         csv_files.append(csv_paths[0])
         return csv_files
 
-    d = os.path.join(census_dir, packname, "Sequential Number Descriptor")
+    d = os.path.join(census_dir, packname, "2016 Census %s All Geographies for AUST" % abbrev)
     csv_files = merge_and_get_csv_files_by_table_and_series()
 
-    table_re = re.compile(r'^2011Census_(.*)_sequential(.tmp)?.csv$')
+    table_re = re.compile(r'^2016Census_(.*?)(.tmp)?.csv$')
     linkage_pending = []
     data_tables = []
 
@@ -506,12 +484,30 @@ def load_datapacks(loader, census_dir, tmpdir, packname, abbrev, geo_gid_mapping
 
                 def _matcher(line, row):
                     if line == 0:
-                        # rewrite the header
-                        return ['gid'] + row
+                        # Rewrite the header
+                        # Map from "Tot_P_M" (in the CSV header) to "G100" (in the database)
+                        return ['gid', 'region_id'] + [col_mapping[v] for v in row[1:]]
                     else:
-                        return [str(lookup[row[0]])] + row
+                        # Data rows
+                        if row[0] in lookup:
+                            return [str(lookup[row[0]])] + row
+                        else:
+                            # Handle missing 9799 LGAs in 2016
+                            logger.error("failed gid lookup for '%s' for '%s'" % (row[0], census_division))
+                            return [row[0]] + row
                 return _matcher
-            gid_match = make_match_fn()
+        else:
+            # For geometry AUST
+            def make_match_fn():
+                def _matcher(line, row):
+                    if line == 0:
+                        # rewrite the header
+                        return ['gid', 'region_id'] + [col_mapping[v] for v in row[1:]]
+                    else:
+                        # rewrite the single row with a gid of 1
+                        return ["1"] + row
+                return _matcher
+        gid_match = make_match_fn()
 
         # normalise the CSV file by reading it in and writing it out again,
         # Postgres is quite pedantic. we also want to add an additional column to it
@@ -525,7 +521,6 @@ def load_datapacks(loader, census_dir, tmpdir, packname, abbrev, geo_gid_mapping
         if csv_path.endswith(".tmp.csv"):
             os.remove(csv_path)
 
-    # @FIXME Doesn't work in the new multi-schema world. DataLoader.get_geometry_source() fails.
     # done as another pass to avoid having to re-run the reflection of the entire
     # database for every CSV file loaded (can be thousands)
     with loader.access_schema(SHAPE_SCHEMA) as geo_access:
@@ -558,31 +553,39 @@ def build_geo_gid_mapping(factory):
 
 
 def load_attrs(factory, census_dir, tmpdir):
-    release = '3'
-
     packages = [
-        ("Aboriginal and Torres Strait Islander Peoples Profile", "IP", "Metadata_2011_IP_DataPack.xlsx", "http://www.abs.gov.au/ausstats/abs@.nsf/papersbyReleaseDate/70B0E87BFC57CFE3CA257AA600136D3A?OpenDocument"),
-        ("Basic Community Profile", "BCP", "Metadata_2011_BCP_DataPack.xlsx", "http://www.abs.gov.au/websitedbs/censushome.nsf/home/communityprofiles"),
-        ("Place of Enumeration Profile", "PEP", "Metadata_2011_PEP_DataPack.xlsx", "http://www.abs.gov.au/ausstats/abs@.nsf/products/8862E7818AD89474CA2570D90018BFAF?OpenDocument"),
-        ("Expanded Community Profile", "XCP", "Metadata_2011_XCP_DataPack.xlsx", "http://www.abs.gov.au/ausstats/abs@.nsf/mf/2069.0.30.005?OpenDocument"),
-        ("Time Series Profile", "TSP", "Metadata_2011_TSP_DataPack.xlsx", "http://www.abs.gov.au/ausstats/abs@.nsf/ProductsbyReleaseDate/87541FA89DA17C6FCA257AA600136D72?OpenDocument"),
-        ("Working Population Profile", "WPP", "Metadata_2011_WPP_DataPack.xlsx", "http://www.abs.gov.au/ausstats/abs@.nsf/productsbytitle/E6A94B5402FD62DCCA2570D90018BFAC?OpenDocument"),
+        ("Aboriginal and Torres Strait Islander Peoples Profile", "ATSIP", "Metadata_2016_ATSIP_DataPack.xlsx", "http://www.abs.gov.au/ausstats/abs@.nsf/mf/2069.0.30.002"),
+        ("General Community Profile", "GCP", "Metadata_2016_GCP_DataPack.xlsx", "http://www.abs.gov.au/ausstats/abs@.nsf/mf/2001.0"),
+        ("Place of Enumeration Profile", "PEP", "Metadata_2016_PEP_DataPack.xlsx", "http://www.abs.gov.au/ausstats%5Cabs@.nsf/0/07ACB32CACD7F2B5CA2573600019C5F3?Opendocument"),
+        ("Time Series Profile", "TSP", "Metadata_2016_TSP_DataPack.xlsx", "http://www.abs.gov.au/ausstats/abs@.nsf/mf/2003.0?OpenDocument"),
+        ("Working Population Profile", "WPP", "Metadata_2016_WPP_DataPack.xlsx", "http://www.abs.gov.au/ausstats/abs@.nsf/mf/2006.0"),
     ]
+
+    # For dev purposes only - drop schemas on load
+    # from sqlalchemy.orm import sessionmaker
+    # Session = sessionmaker()
+    # Session.configure(bind=factory.engine)
+    # session = Session()
 
     attr_results = []
     geo_gid_mapping = build_geo_gid_mapping(factory)
+
     for package_name, abbrev, metadata_filename, package_description in packages:
-        dirname = '2011 ' + package_name + ' Release %s' % release
-        schema_name = 'aus_census_2011_' + abbrev.lower()
+        # session.execute("DROP SCHEMA IF EXISTS aus_census_2016_{} CASCADE".format(abbrev.lower()))
+        # session.commit()
+
+        dirname = '2016 ' + package_name
+        package_dir = os.path.join(census_dir, dirname)
+        schema_name = 'aus_census_2016_' + abbrev.lower()
         loader = factory.make_loader(schema_name)
         loader.add_dependency(SHAPE_SCHEMA)
         loader.set_metadata(
             name=package_name,
-            family="ABS Census 2011",
+            family="ABS Census 2016",
             description=package_description)
 
-        columns_by_series = load_metadata_table_serises(loader, census_dir, metadata_filename)
-        data_tables = load_datapacks(loader, census_dir, tmpdir, dirname, abbrev, geo_gid_mapping, columns_by_series)
-        load_metadata(loader, census_dir, metadata_filename, data_tables, columns_by_series)
+        columns_by_series, col_mapping = load_metadata_table_serises(loader, package_dir, metadata_filename)
+        data_tables = load_datapacks(loader, census_dir, tmpdir, dirname, abbrev, geo_gid_mapping, columns_by_series, col_mapping)
+        load_metadata(loader, package_dir, metadata_filename, data_tables, columns_by_series)
         attr_results.append(loader.result())
     return attr_results
