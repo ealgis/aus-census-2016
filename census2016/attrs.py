@@ -12,6 +12,7 @@ import openpyxl
 import sqlalchemy
 import csv
 import json
+from datetime import datetime
 from collections import OrderedDict
 
 from ealgis_common.loaders import RewrittenCSV, CSVLoader
@@ -582,7 +583,9 @@ def load_attrs(factory, census_dir, tmpdir):
         loader.set_metadata(
             name=package_name,
             family="ABS Census 2016",
-            description=package_description)
+            description=package_description,
+            date_published=datetime(2016, 6, 27, 3, 0, 0)  # Set in UTC
+        )
 
         columns_by_series, col_mapping = load_metadata_table_serises(loader, package_dir, metadata_filename)
         data_tables = load_datapacks(loader, census_dir, tmpdir, dirname, abbrev, geo_gid_mapping, columns_by_series, col_mapping)
