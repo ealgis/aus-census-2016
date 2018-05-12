@@ -65,44 +65,6 @@ def fixLackOfSpaces(table_number, column_name, metadata, seriesName):
     return metadata
 
 
-# def repair_series_name(table_number, column_name, metadata, seriesName):
-#     """
-#     Handle tables where the series name (part of the column heading metadata)
-#     has been typoed or incorrectly coded.
-
-#     IMPORTANT: Any changes here also need to be done in repair_census_metadata() and repair_column_series_census_metadata()
-#     @FIXME For 2021 we should probably refactor these functions so we don't violate DRY. (Assuming we're still reduced to parsing XLS files to get metadata)
-#     """
-#     if seriesName is not None:
-#         oldSeriesName = seriesName
-
-#         # The TSP DataPack contains a pile of typos where words are run together without spaces *sigh*
-#         if table_number.startswith("t"):
-#             seriesName = multiple_replace(seriesName, {
-#                 "2006CENSUS-MALES": "2006 Census: Males",
-#                 "2006CENSUS-FEMALES": "2006 Census: Females",
-#                 "2006CENSUS-PERSONS": "2006 Census: Persons",
-#                 "2006CENSUS": "2006 Census",
-#                 "2011CENSUS-MALES": "2011 Census: Males",
-#                 "2011CENSUS-FEMALES": "2011 Census: Females",
-#                 "2011CENSUS-PERSONS": "2011 Census: Persons",
-#                 "2011CENSUS": "2011 Census",
-#                 "2016CENSUS-MALES": "2016 Census: Males",
-#                 "2016CENSUS-FEMALES": "2016 Census: Females",
-#                 "2016CENSUS-PERSONS": "2016 Census: Persons",
-#                 "2016CENSUS": "2016 Census",
-#             })
-
-#         elif table_number == "w03":
-#             seriesName = seriesName.replace("EmployeeS", "Employee")
-#         elif table_number == "w19":
-#             seriesName = seriesName.replace(" STUDENTS", " STUDENT")
-
-#         elif table_number.startswith("i"):
-#             seriesName = seriesName.replace("HOUSEHOLDS WITH INDIGENOUS PERSON(S)", "Households with Aboriginal and or Torres Strait Islander Persons")
-#     return seriesName
-
-
 def repair_column_series_census_metadata(table_number, column_name, column_heading):
     if column_heading is None:
         return column_heading
