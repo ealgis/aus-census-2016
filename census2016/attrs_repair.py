@@ -10,78 +10,6 @@ def multiple_replace(text, adict):
     return rx.sub(one_xlat, text)
 
 
-def repair_column_series_census_metadata(table_number, column_name, column_heading):
-    column_number = int(column_name[1:])
-
-    if table_number.startswith("t"):
-        column_heading = multiple_replace(column_heading, {
-            "2006Census:Males": "2006 Census: Males",
-            "2006Census:Females": "2006 Census: Females",
-            "2006Census:Persons": "2006 Census: Persons",
-            "2006Census": "2006 Census",
-            "2011Census:Males": "2011 Census: Males",
-            "2011Census:Females": "2011 Census: Females",
-            "2011Census:Persons": "2011 Census: Persons",
-            "2011Census": "2011 Census",
-            "2016Census:Males": "2016 Census: Males",
-            "2016Census:Females": "2016 Census: Females",
-            "2016Census:Persons": "2016 Census: Persons",
-            "2016Census": "2016 Census",
-        })
-
-        if table_number == "t12":
-            # These are mislabelled as part of the 2006 Census series
-            if column_number >= 4949 and column_number <= 4968:
-                column_heading = column_heading.replace("2006 Census", "2011 Census")
-            # These are mislabelled as part of the 2011 Census series
-            elif column_number >= 5259 and column_number <= 5278:
-                column_heading = column_heading.replace("2011 Census", "2016 Census")
-        elif table_number == "t20":
-            # These are mislabelled as part of the 2006 Census series
-            if column_number >= 8326 and column_number <= 8337:
-                column_heading = column_heading.replace("2006 Census", "2011 Census")
-
-    return column_heading
-
-
-def repair_series_name(table_number, column_name, metadata, seriesName):
-    """
-    Handle tables where the series name (part of the column heading metadata) 
-    has been typoed or incorrectly coded.
-
-    IMPORTANT: Any changes here also need to be done in repair_census_metadata() and repair_column_series_census_metadata()
-    @FIXME For 2021 we should probably refactor these functions so we don't violate DRY. (Assuming we're still reduced to parsing XLS files to get metadata)
-    """
-    if seriesName is not None:
-        oldSeriesName = seriesName
-
-        # The TSP DataPack contains a pile of typos where words are run together without spaces *sigh*
-        if table_number.startswith("t"):
-            seriesName = multiple_replace(seriesName, {
-                "2006CENSUS-MALES": "2006 Census: Males",
-                "2006CENSUS-FEMALES": "2006 Census: Females",
-                "2006CENSUS-PERSONS": "2006 Census: Persons",
-                "2006CENSUS": "2006 Census",
-                "2011CENSUS-MALES": "2011 Census: Males",
-                "2011CENSUS-FEMALES": "2011 Census: Females",
-                "2011CENSUS-PERSONS": "2011 Census: Persons",
-                "2011CENSUS": "2011 Census",
-                "2016CENSUS-MALES": "2016 Census: Males",
-                "2016CENSUS-FEMALES": "2016 Census: Females",
-                "2016CENSUS-PERSONS": "2016 Census: Persons",
-                "2016CENSUS": "2016 Census",
-            })
-
-        elif table_number == "w03":
-            seriesName = seriesName.replace("EmployeeS", "Employee")
-        elif table_number == "w19":
-            seriesName = seriesName.replace(" STUDENTS", " STUDENT")
-
-        elif table_number.startswith("i"):
-            seriesName = seriesName.replace("HOUSEHOLDS WITH INDIGENOUS PERSON(S)", "Households with Aboriginal and or Torres Strait Islander Persons")
-    return seriesName
-
-
 def fixLackOfSpaces(table_number, column_name, metadata, seriesName):
     """
     The TSP datapack for 2016 had an issue with its column names. They were lacking spaces between words!
@@ -137,26 +65,168 @@ def fixLackOfSpaces(table_number, column_name, metadata, seriesName):
     return metadata
 
 
+# def repair_series_name(table_number, column_name, metadata, seriesName):
+#     """
+#     Handle tables where the series name (part of the column heading metadata)
+#     has been typoed or incorrectly coded.
+
+#     IMPORTANT: Any changes here also need to be done in repair_census_metadata() and repair_column_series_census_metadata()
+#     @FIXME For 2021 we should probably refactor these functions so we don't violate DRY. (Assuming we're still reduced to parsing XLS files to get metadata)
+#     """
+#     if seriesName is not None:
+#         oldSeriesName = seriesName
+
+#         # The TSP DataPack contains a pile of typos where words are run together without spaces *sigh*
+#         if table_number.startswith("t"):
+#             seriesName = multiple_replace(seriesName, {
+#                 "2006CENSUS-MALES": "2006 Census: Males",
+#                 "2006CENSUS-FEMALES": "2006 Census: Females",
+#                 "2006CENSUS-PERSONS": "2006 Census: Persons",
+#                 "2006CENSUS": "2006 Census",
+#                 "2011CENSUS-MALES": "2011 Census: Males",
+#                 "2011CENSUS-FEMALES": "2011 Census: Females",
+#                 "2011CENSUS-PERSONS": "2011 Census: Persons",
+#                 "2011CENSUS": "2011 Census",
+#                 "2016CENSUS-MALES": "2016 Census: Males",
+#                 "2016CENSUS-FEMALES": "2016 Census: Females",
+#                 "2016CENSUS-PERSONS": "2016 Census: Persons",
+#                 "2016CENSUS": "2016 Census",
+#             })
+
+#         elif table_number == "w03":
+#             seriesName = seriesName.replace("EmployeeS", "Employee")
+#         elif table_number == "w19":
+#             seriesName = seriesName.replace(" STUDENTS", " STUDENT")
+
+#         elif table_number.startswith("i"):
+#             seriesName = seriesName.replace("HOUSEHOLDS WITH INDIGENOUS PERSON(S)", "Households with Aboriginal and or Torres Strait Islander Persons")
+#     return seriesName
+
+
+def repair_column_series_census_metadata(table_number, column_name, column_heading):
+    if column_heading is None:
+        return column_heading
+
+    column_number = int(column_name[1:])
+
+    if table_number.startswith("t"):
+        column_heading = multiple_replace(column_heading, {
+            "2006CENSUS-MALES": "2006 Census: Males",
+            "2006CENSUS-FEMALES": "2006 Census: Females",
+            "2006CENSUS-PERSONS": "2006 Census: Persons",
+            "2006CENSUS": "2006 Census",
+            "2011CENSUS-MALES": "2011 Census: Males",
+            "2011CENSUS-FEMALES": "2011 Census: Females",
+            "2011CENSUS-PERSONS": "2011 Census: Persons",
+            "2011CENSUS": "2011 Census",
+            "2016CENSUS-MALES": "2016 Census: Males",
+            "2016CENSUS-FEMALES": "2016 Census: Females",
+            "2016CENSUS-PERSONS": "2016 Census: Persons",
+            "2016CENSUS": "2016 Census",
+        })
+
+        if table_number == "t12":
+            # These are mislabelled as part of the 2006 Census series
+            if column_number >= 4949 and column_number <= 4968:
+                column_heading = column_heading.replace("2006 Census", "2011 Census")
+            # These are mislabelled as part of the 2011 Census series
+            elif column_number >= 5259 and column_number <= 5278:
+                column_heading = column_heading.replace("2011 Census", "2016 Census")
+        elif table_number == "t18":
+            column_number = int(column_name[1:])
+            # Typoed as "itecture"
+            if column_number == 7801:
+                if column_heading != "2016 Census":
+                    column_heading = "Other dwelling|2016 Census"
+        elif table_number == "t20":
+            # These are mislabelled as part of the 2006 Census series
+            if column_number >= 8326 and column_number <= 8337:
+                column_heading = column_heading.replace("2006 Census", "2011 Census")
+
+    elif table_number == "w03":
+        if column_number >= 463 and column_number <= 466:
+            column_heading = column_heading.replace("EmployeeS", "Employee")
+    elif table_number == "w19":
+        column_heading = column_heading.replace(" STUDENTS", " STUDENT")
+
+    elif table_number in ["i10", "i12"]:
+        column_heading = column_heading.replace("HOUSEHOLDS WITH INDIGENOUS PERSON(S)", "Households with Aboriginal and or Torres Strait Islander Persons")
+
+    return column_heading
+
+
 def repair_census_metadata_first_pass(table_number, column_name, metadata):
     """
-    Used to repair issues with column headings. Repeats some of what repair_column_series_census_metadata()
-    and repair_series_name() do, but it used in different parts of attrs.py.
+    Used to repair issues with column headings. Repeats some of what repair_column_series_census_metadata(), but it used in different parts of attrs.py.
 
     @FIXME For 2021 if we're still using this code.
     """
     column_number = int(column_name[1:])
 
-    if table_number == "t12":
+    if table_number == "g38":
+        if "None (includes bedsitters)" in metadata["kind"]:
+            metadata["kind"] = metadata["kind"].replace("None (includes bedsitters)", "None but includes bedsitters")
+    elif table_number == "g53":
+        if metadata["kind"] == "Occupation inadequately described/ Not stated":
+            metadata["kind"] = "Occupation inadequately described Not stated"
+    elif table_number == "g57":
+        if metadata["kind"] == "Occupation inadequately described/ Not stated":
+            metadata["kind"] = "Occupation inadequately described Not stated"
+    elif table_number == "i01":
+        if "Non-Indigenous " in metadata["kind"]:
+            metadata["kind"] = metadata["kind"].replace("Non-Indigenous ", "Non Indigenous: ")
+        elif "Non-Indigenous:" in metadata["kind"]:
+            metadata["kind"] = metadata["kind"].replace("Non-Indigenous", "Non Indigenous")
+    elif table_number == "i02":
+        column_number = int(column_name[1:])
+
+        # Columns mistakenly include the row
+        if column_number >= 514 and column_number <= 516:
+            metadata["kind"] = metadata["kind"].replace("Indigenous: Total ", "")
+        if column_number >= 517 and column_number <= 519:
+            metadata["kind"] = metadata["kind"].replace("Non-Indigenous ", "")
+        if column_number >= 520 and column_number <= 522:
+            metadata["kind"] = metadata["kind"].replace("Indigenous status not stated: ", "")
+        if column_number >= 523 and column_number <= 525:
+            metadata["kind"] = metadata["kind"].replace("Total ", "")
+    elif table_number == "i10":
+        column_number = int(column_name[1:])
+
+        if column_number >= 1624 and column_number <= 1944 and column_name[-1] == "4":
+            metadata["kind"] = metadata["kind"].replace("Other dwelling: Caravan\ cabin\ houseboat|", "Other dwelling: Caravan|")
+            metadata["kind"] = metadata["kind"].replace("Other dwelling: Cabin\ houseboat|", "Other dwelling: Caravan|")
+        elif column_number >= 1645 and column_number <= 1945 and column_name[-1] == "5":
+            metadata["kind"] = metadata["kind"].replace("Other dwelling: Caravan\ cabin\ houseboat|", "Other dwelling: Cabin\ houseboat|")
+
+        metadata["kind"] = metadata["kind"].replace("Flat\ unit or apartment", "Flat unit or apartment")
+    elif table_number == "t06":
+        column_number = int(column_name[1:])
+        if column_number >= 2326 and column_number <= 2328:
+            metadata["kind"] = metadata["kind"].replace("Indigenous:", "Aboriginal and or Torres Strait Islander:")
+    elif table_number == "t12":
         # These are mislabelled as part of the 2006 Census series
         if column_number >= 4949 and column_number <= 4968:
             metadata["kind"] = metadata["kind"].replace("2006CENSUS", "2011CENSUS")
         # These are mislabelled as part of the 2011 Census series
         elif column_number >= 5259 and column_number <= 5278:
             metadata["kind"] = metadata["kind"].replace("2011CENSUS", "2016CENSUS")
+        # Mislablled as "Other religious affilation"
+        elif column_number == 5549:
+            metadata["type"] = "2016_Census_Religious_affiliation_not_stated_0_14_years"
+    elif table_number == "t18":
+        column_number = int(column_name[1:])
+        # Typoed as "itecture"
+        if column_number == 7801:
+            metadata["kind"] = "Otherdwelling|2016CENSUS"
     elif table_number == "t20":
         # These are mislabelled as part of the 2006 Census series
         if column_number >= 8326 and column_number <= 8337:
             metadata["kind"] = metadata["kind"].replace("2006CENSUS", "2011CENSUS")
+
+    elif table_number == "w03":
+        column_number = int(column_name[1:])
+        if column_number >= 463 and column_number <= 466:
+            metadata["kind"] = metadata["kind"].replace("EmployeeS", "Employee")
     return metadata
 
 
@@ -165,11 +235,39 @@ def repair_census_metadata(table_number, column_name, metadata, seriesName):
     metadata["kind"] = repair_column_series_census_metadata(table_number, column_name, metadata["kind"])
     metadata = fixLackOfSpaces(table_number, column_name, metadata, seriesName)
 
-    if table_number == "g11":
+    if table_number == "g03":
+        if metadata["kind"] != "Total":
+            metadata["kind"] = "Age {}".format(metadata["kind"])
+    elif table_number == "g09":
+        if metadata["type"] == "Males Afghanistan Age Total":
+            metadata["type"] = "Males Afghanistan Total"
+        elif metadata["type"] == "Females Afghanistan Age Total":
+            metadata["type"] = "Females Afghanistan Total"
+        elif metadata["type"] == "Persons Afghanistan Age Total":
+            metadata["type"] = "Persons Afghanistan Total"
+    elif table_number == "g10":
+        # Remove "Year of arrival" prefix
+        if "Year of arrival not stated" not in metadata["type"]:
+            metadata["type"] = metadata["type"].replace("Year of arrival", "")
+    elif table_number == "g11":
         metadata["kind"] = metadata["kind"].replace("2006 2015", "2006 2010")
-        metadata["kind"] = metadata["kind"].replace("2006-2015", "2006 2010")
+        metadata["kind"] = metadata["kind"].replace("2006-2015", "2006-2010")
+    elif table_number == "g16":
+        if metadata["kind"].startswith("Total|") == False:
+            metadata["kind"] = "Age {}".format(metadata["kind"])
+    elif table_number == "g17":
+        if metadata["kind"].startswith("Total|") == False:
+            metadata["kind"] = "Age {}".format(metadata["kind"])
     elif table_number == "g18":
-        metadata["kind"] = metadata["kind"].replace("No need for assistance", "Does not have need for assistance")
+        if metadata["kind"].startswith("Need for assistance|") == True:
+            metadata["kind"] = metadata["kind"].replace("Need for assistance", "Has need for assistance")
+        if metadata["kind"].startswith("No need for assistance|") == True:
+            metadata["kind"] = metadata["kind"].replace("No need for assistance", "Does not have need for assistance")
+    elif table_number == "g23":
+        if metadata["kind"].startswith("Aged 15-24 years|") == True:
+            metadata["kind"] = metadata["kind"].replace("Aged", "Age")
+        elif metadata["kind"].startswith("Total|") == False:
+            metadata["kind"] = "Age {}".format(metadata["kind"])
     elif table_number == "g24":
         metadata["kind"] = multiple_replace(metadata["kind"], {
             ": 1": " One child",
@@ -180,19 +278,54 @@ def repair_census_metadata(table_number, column_name, metadata, seriesName):
             ": 6 or more": " Six or more children",
             ": None": " No children",
         })
+    elif table_number == "g33":
+        # Remove "Dwelling structure" prefix
+        if "Dwelling structure not stated" not in metadata["type"]:
+            metadata["type"] = metadata["type"].replace("Dwelling structure", "")
+    elif table_number == "g34":
+        # Remove "Dwelling structure" prefix
+        if "Dwelling structure Not stated" not in metadata["type"]:
+            metadata["type"] = metadata["type"].replace("Dwelling structure", "")
+    elif table_number == "g36":
+        # Remove "Landlord type" prefix
+        if "Landlord type Not stated" not in metadata["type"]:
+            metadata["type"] = metadata["type"].replace("Landlord type", "")
+    elif table_number == "g37":
+        # Remove "Dwelling structure" prefix
+        if "Dwelling structure Not stated" not in metadata["type"]:
+            metadata["type"] = metadata["type"].replace("Dwelling structure", "")
     elif table_number == "g38":
-        # metadata["type"] = metadata["type"].replace("Sixor more", "Six or more")
         metadata["kind"] = metadata["kind"].replace("Six bedrooms or more", "Six or more bedrooms")
+
+        # Remove "Number of bedrooms" prefix
+        if "Number of bedrooms Not stated" not in metadata["type"]:
+            metadata["type"] = metadata["type"].replace("Number of bedrooms", "")
+
+        if "None includes bedsitters" in metadata["type"]:
+            metadata["type"] = metadata["type"].replace("None includes bedsitters", "None but includes bedsitters")
+    elif table_number == "g43":
+        if metadata["kind"].startswith("Total|") == False:
+            metadata["kind"] = "Age {}".format(metadata["kind"])
     elif table_number == "g52":
         metadata["kind"] = metadata["kind"].replace("49 and over", "49 hours and over")
+    elif table_number == "g53":
+        if "Occupation Inadequately described Not stated" not in metadata["type"]:
+            metadata["type"] = metadata["type"].replace("Occupation", "")
+    elif table_number == "g54":
+        if metadata["type"].startswith("400 599"):
+            metadata["type"] = metadata["type"].replace("400 599", "400 499")
     elif table_number == "g56":
         metadata["kind"] = metadata["kind"].replace("Unemployed, looking for work: ", "Unemployed looking for ")
+    elif table_number == "g57":
+        if "Occupation Inadequately described Not stated" not in metadata["type"]:
+            metadata["type"] = metadata["type"].replace("Occupation", "")
     elif table_number == "g58":
         metadata["kind"] = metadata["kind"].replace("49 and over", "49 hours and over")
 
     elif table_number == "p10":
         metadata["kind"] = metadata["kind"].replace("1966-1965", "1956-1965")
         metadata["kind"] = metadata["kind"].replace("Year of arrival: Year of arrival not stated", "Year of arrival not stated")
+        metadata["type"] = metadata["type"].replace("Iran  Herzegovina", "Iran")
     elif table_number == "p18":
         metadata["kind"] = metadata["kind"].replace("Overseas vistors", "Overseas visitors")
     elif table_number == "p19":
@@ -215,6 +348,11 @@ def repair_census_metadata(table_number, column_name, metadata, seriesName):
             ": 6 or more": " Six or more children",
             ": None": " No children",
         })
+
+    elif table_number == "t06":
+        column_number = int(column_name[1:])
+        if column_number >= 2326 and column_number <= 2328:
+            metadata["type"] = metadata["type"].replace("over Indigenous", "over Aboriginal and or Torres Strait Islander")
 
     elif table_number == "t07":
         metadata["kind"] = multiple_replace(metadata["kind"], {
@@ -256,10 +394,17 @@ def repair_census_metadata(table_number, column_name, metadata, seriesName):
         })
         metadata["kind"] = metadata["kind"].replace("usually resident", "usually resident in group households")
     elif table_number == "t18":
+        # Remove "Dwelling structure" prefix
+        if "Dwelling structure Not stated" not in metadata["type"]:
+            metadata["type"] = metadata["type"].replace("Dwelling structure ", "")
+    elif table_number == "t19":
         column_number = int(column_name[1:])
-        if column_number == 7801:
-            # Typoed as "itecture"
-            metadata["kind"] = metadata["kind"] = "Dwelling structure Other dwelling"
+        if column_number in [7912, 8024, 8136]:
+            metadata["type"] = metadata["type"].replace("850 and 950", "850 and 949")
+
+        # Remove "Landlord type" prefix
+        if "Landlord type Not stated" not in metadata["type"]:
+            metadata["type"] = metadata["type"].replace("Landlord type", "")
     elif table_number == "t22" or table_number == "t23":
         metadata["kind"] = multiple_replace(metadata["kind"], {
             "1 child|": "One child|",
@@ -283,11 +428,22 @@ def repair_census_metadata(table_number, column_name, metadata, seriesName):
     elif table_number == "t28":
         metadata["type"] = metadata["type"].replace("Has need assistance", "Has need for assistance")
 
-    elif table_number == "w02" or table_number == "w04" or table_number == "w05" or table_number == "w06":
+    elif table_number == "w02" or table_number == "w04":
+        # Not altering series name - this the column label
+        metadata["kind"] = metadata["kind"].replace("Employees", "Employee")
+    elif table_number == "w05":
+        # Not altering series name - this the column label
         metadata["kind"] = metadata["kind"].replace("Employees", "Employee")
 
-    elif table_number == "w03":
-        metadata["kind"] = metadata["kind"].replace("EmployeeS", "Employee")
+        metadata["type"] = metadata["type"].replace("United Kingdom Channel Islands and Isle of Man Channel Islands and Isle of Man", "United Kingdom Channel Islands and Isle of Man")
+    elif table_number == "w06":
+        # Not altering series name - this the column label
+        metadata["kind"] = metadata["kind"].replace("Employees", "Employee")
+
+        column_number = int(column_name[1:])
+        if column_number == 2754:
+            # Mislabelled as from the "200 - 299" range
+            metadata["type"] = "Persons 150 299 Total"
     elif table_number == "w12":
         metadata["kind"] = metadata["kind"].replace("Occupation inadequately", "inadequately")
     elif table_number == "w19":
@@ -299,39 +455,27 @@ def repair_census_metadata(table_number, column_name, metadata, seriesName):
         column_number = int(column_name[1:])
 
         if column_number == 3:
-            metadata["kind"] = metadata["kind"].replace("Islander Persons:", "Islander Persons")
+            metadata["kind"] = metadata["kind"].replace("Islander Persons:", "Islander: Persons")
+        elif column_number >= 10 and column_number <= 12:
+            metadata["kind"] = metadata["kind"].replace("Total ", "Total: ")
         elif column_number >= 52 and column_number <= 54:
-            metadata["kind"] = metadata["kind"].replace("Non-Indigenous:", "Non Aboriginal and or Torres Strait Islander:")
+            metadata["type"] = metadata["type"].replace("Non Aboriginal and or Torres Strait Islander", "Non Indigenous")
         elif column_number == 241:
             metadata["type"] += " Males"
-    elif table_number == "i02":
-        column_number = int(column_name[1:])
-
-        # Columns mistakenly include the row
-        if column_number >= 514 and column_number <= 516:
-            metadata["kind"] = metadata["kind"].replace("Indigenous: ", "")
-        if column_number >= 517 and column_number <= 519:
-            metadata["kind"] = metadata["kind"].replace("Non-Indigenous ", "")
-        if column_number >= 520 and column_number <= 522:
-            metadata["kind"] = metadata["kind"].replace("Indigenous status not stated: ", "")
-        if column_number >= 523 and column_number <= 525:
-            metadata["kind"] = metadata["kind"].replace("Total ", "")
     elif table_number == "i06":
         if "Non-Indigenous" not in metadata["kind"] and "Indigenous status not stated" not in metadata["kind"]:
             metadata["kind"] = metadata["kind"].replace("Indigenous", "Aboriginal and or Torres Strait Islander")
     elif table_number == "i08":
-        metadata["kind"] = metadata["kind"].replace("No need for assistance", "Does not have need for assistance")
+        metadata["kind"] = metadata["kind"].replace("Need for assistance|", "Has need for assistance|")
+        metadata["kind"] = metadata["kind"].replace("No need for assistance|", "Does not have need for assistance|")
     elif table_number == "i10":
         column_number = int(column_name[1:])
 
-        if column_number >= 1624 and column_number <= 1944 and column_name[-1] == "4":
-            metadata["kind"] = metadata["kind"].replace("Other dwelling: Caravan\ cabin\ houseboat|", "Other dwelling: Caravan|")
-            metadata["kind"] = metadata["kind"].replace("Other dwelling: Cabin\ houseboat|", "Other dwelling: Caravan|")
-        elif column_number >= 1645 and column_number <= 1945 and column_name[-1] == "5":
-            metadata["kind"] = metadata["kind"].replace("Other dwelling: Caravan\ cabin\ houseboat|", "Other dwelling: Cabin\ houseboat|")
-
-        metadata["kind"] = metadata["kind"].replace("Flat\ unit or apartment", "Dwelling structure Flat unit or apartment")
         metadata["type"] = metadata["type"].replace("Dwelling structure Flat or apartment", "Dwelling structure Flat unit or apartment")
+
+        # Remove "Dwelling structure" prefix
+        if "Dwelling structure Not stated" not in metadata["type"]:
+            metadata["type"] = metadata["type"].replace("Dwelling structure", "")
     elif table_number == "i11":
         metadata["kind"] = metadata["kind"].replace("Indigenous households", "Households with Aboriginal and or Torres Strait Islander Persons")
     elif table_number == "i12":

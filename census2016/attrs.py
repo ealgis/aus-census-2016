@@ -18,7 +18,7 @@ from collections import OrderedDict
 from ealgis_common.loaders import RewrittenCSV, CSVLoader
 from ealgis_common.util import alistdir, make_logger
 from .shapes import SHAPE_LINKAGE, SHAPE_SCHEMA
-from .attrs_repair import repair_census_metadata_first_pass, repair_census_metadata, repair_column_series_census_metadata, repair_series_name
+from .attrs_repair import repair_census_metadata_first_pass, repair_census_metadata, repair_column_series_census_metadata
 
 logger = make_logger(__name__)
 
@@ -61,16 +61,17 @@ def parseColumnMetadata(table_number, column_name, metadata):
         return rowLabel
 
     def formatHumanReadableColumnLabel(columnLabel):
-        return columnLabel.strip()
+        return columnLabel.strip().replace("\\", "")
 
-    # if table_number != "i15":
+    # if table_number != "t16":
     #     return {}
     # if column_name != "i2688":
     #     return {}
 
     metadata_original = metadata.copy()
     metadata = repair_census_metadata_first_pass(table_number, column_name.lower(), metadata)
-    seriesName = repair_series_name(table_number, column_name.lower(), metadata, getSeriesName(metadata["kind"]))
+    seriesName = repair_column_series_census_metadata(table_number, column_name.lower(), getSeriesName(metadata["kind"]))
+
     metadata = repair_census_metadata(table_number, column_name.lower(), metadata, seriesName)
 
     columnType = metadata["type"].strip()
@@ -130,7 +131,7 @@ def load_metadata_table_serises(loader, census_dir, xlsx_name):
     Males, Females, Persons
 
     Returns -
-    col_meta[table_number][seriseName] = {
+    col_meta[table_number][seriesName] = {
         "columns": [], # The Ids of the columns in a series.
         "datapackNames": [], # The names of the DataPack files (e.g. B12B, B12C) containing the columns for a series.
     }
@@ -171,26 +172,28 @@ def load_metadata_table_serises(loader, census_dir, xlsx_name):
         table_number = m.groups()[0]  # b46a -> b46
 
         column_heading = repair_column_series_census_metadata(table_number, column_name.lower(), str(column_heading).strip())
-        seriseName = getSeriesName(column_heading)
+        seriesName = getSeriesName(column_heading)
 
         col_mapping[short_name] = column_name
 
-        if seriseName is not None:
+        if seriesName is not None:
             if table_number not in col_meta:
                 col_meta[table_number] = {}
 
-            if seriseName not in col_meta[table_number]:
-                col_meta[table_number][seriseName] = {
+            if seriesName not in col_meta[table_number]:
+                col_meta[table_number][seriesName] = {
                     "columns": [],
                     "columns_seq": [],
                     "datapackNames": [],
                 }
 
-            col_meta[table_number][seriseName]["columns"].append(short_name)  # The shapefile-esque short column name e.g. Tot_P_M
-            col_meta[table_number][seriseName]["columns_seq"].append(column_name)  # The sequence_id e.g. G100
+            col_meta[table_number][seriesName]["columns"].append(short_name)  # The shapefile-esque short column name e.g. Tot_P_M
+            col_meta[table_number][seriesName]["columns_seq"].append(column_name)  # The sequence_id e.g. G100
 
-            if datapack_file.lower() not in col_meta[table_number][seriseName]["datapackNames"]:
-                col_meta[table_number][seriseName]["datapackNames"].append(datapack_file.lower())
+            if datapack_file.lower() not in col_meta[table_number][seriesName]["datapackNames"]:
+                col_meta[table_number][seriesName]["datapackNames"].append(datapack_file.lower())
+
+            column_number = int(column_name[1:])
     del wb
 
     return col_meta, col_mapping
@@ -311,6 +314,53 @@ def load_metadata(loader, census_dir, xlsx_name, data_tables, columns_by_series)
             # Filter all columns for the table down to just those columns in this series
             columns = [(col_name, col) for col_name, col in col_meta[table_number] if col_name.upper() in columns_by_series[table_number][series_name]["columns_seq"]]
 
+        # Validate metadata to ensure that we have the expected number
+        # of rows and columns
+        def isTableColumnMetadataValid(header, rows, column_uids):
+            for h in header:
+                for r in rows:
+                    column_uid = "{}.{}".format(r, h)
+                    if column_uid not in column_uids:
+                        return False
+            return True
+
+        def getNumberOfMatchingHeaders(row, header, column_uids):
+            count = 0
+            headers = []
+            for h in header:
+                column_uid = "{}.{}".format(row, h)
+                if column_uid in column_uids:
+                    count += 1
+                    headers.append(h)
+            return count, headers
+
+        header = list(set([c[1]["kind"] for c in columns]))
+        rows = list(set([c[1]["type"] for c in columns]))
+        column_uids = list(set(["{}.{}".format(c[1]["type"], c[1]["kind"]) for c in columns]))
+
+        if isTableColumnMetadataValid(header, rows, column_uids) == False:
+            logger.error("Table Header/Row mismatch found on table '{}' series '{}'".format(table_number, meta["series"]))
+
+            for r in rows:
+                matches, headers = getNumberOfMatchingHeaders(r, header, column_uids)
+                if matches != len(header):
+                    missing = [i for i in header if i not in headers]
+                    logger.error("Row '{}' has {} of {} matching headers. Missing: {}".format(r, matches, len(header), ", ".join(missing)))
+
+        # print("#### header for series '{}'".format(meta["series"]), len(header))
+        # for h in header:
+        #     print(h)
+
+        # print("#### rows for series '{}'".format(meta["series"]), len(rows))
+        # for r in rows:
+        #     print(r)
+
+        # print("#### column_uids for series '{}'".format(meta["series"]), len(column_uids))
+        # for uid in column_uids:
+        #     print(uid)
+
+        # print("#### columns for series '{}'".format(meta["series"]), len(columns))
+
         loader.set_table_metadata(table_name, meta)
         loader.register_columns(table_name, columns)
 
@@ -404,7 +454,7 @@ def load_datapacks(loader, census_dir, tmpdir, packname, abbrev, geo_gid_mapping
 
             for table_name, csv_paths in csv_files_by_geog_and_table[geography_name].items():
                 # Merge the separate profile table/datapack CSVs into a single new  CSV file based on region_id (first column)
-                # if table_name != "g06":
+                # if table_name != "t18":
                 #     continue
 
                 if len(csv_paths) > 1:
