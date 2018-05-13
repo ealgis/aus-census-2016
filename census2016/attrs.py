@@ -426,11 +426,19 @@ def load_datapacks(loader, census_dir, tmpdir, packname, abbrev, geo_gid_mapping
                 fieldnames_set = set(fieldnames)
                 # logger.info("Fieldnames ({}): {}".format(len(fieldnames), fieldnames))
 
+                census_division = getGeometryNameFromTableName(getTableNameFromCSVPath(csv_path))
+
                 with open(series_csv_path, "w") as f:
                     writer = csv.DictWriter(f, fieldnames)
                     writer.writeheader()
 
                     for row in reader:
+                        # The 2016 Census LGAs shapefile was missing some null geometries - so we'll dump them here
+                        # Ref. https://github.com/ealgis/aus-census-2016/issues/1
+                        if census_division is not "AUST" and row[region_id_column_name] not in geo_gid_mapping[census_division]:
+                            logger.error("failed gid lookup for '%s' for '%s' - removing row from CSV. Please check and validate." % (row[region_id_column_name], census_division))
+                            continue
+
                         # Use a dictionary comprehension to iterate over the key, value pairs
                         # discarding those pairs whose key is not in the set
                         filtered_row = dict(
@@ -444,20 +452,7 @@ def load_datapacks(loader, census_dir, tmpdir, packname, abbrev, geo_gid_mapping
 
         return csv_files
 
-    def merge_and_get_csv_files_by_table_and_series():
-        csv_files_by_geog_and_table = get_csv_files_by_geography_and_table()
-        csv_files = []
-
-        for geography_name, tables in csv_files_by_geog_and_table.items():
-            # if geography_name != "lga":
-            #     continue
-
-            for table_name, csv_paths in csv_files_by_geog_and_table[geography_name].items():
-                # Merge the separate profile table/datapack CSVs into a single new  CSV file based on region_id (first column)
-                # if table_name != "t18":
-                #     continue
-
-                if len(csv_paths) > 1:
+    def merge_csv_files(table_name, csv_paths):
                     dicts = []
 
                     for i, csv_path in enumerate(csv_paths):
@@ -473,12 +468,41 @@ def load_datapacks(loader, census_dir, tmpdir, packname, abbrev, geo_gid_mapping
                         for key, value in d.items():
                             result.setdefault(key, []).extend(value)
 
+        census_division = getGeometryNameFromTableName(getTableNameFromCSVPath(csv_paths[0]))
+
                     profiletable_name = os.path.basename(csv_paths[0]).split('_')[1]
                     merged_csv_path = csv_paths[0].replace("_{}_".format(profiletable_name), "_{}_".format(table_name.upper())).replace(".csv", ".tmp.csv")
                     with open(merged_csv_path, "w") as f:
                         w = csv.writer(f)
+
+            counter = 0
                         for key, value in result.items():
+                # The 2016 Census LGAs shapefile was missing some null geometries - so we'll dump them here
+                # Ref. https://github.com/ealgis/aus-census-2016/issues/1
+                counter += 1
+                if counter > 1 and census_division is not "AUST" and key not in geo_gid_mapping[census_division]:
+                    logger.error("failed gid lookup for '%s' for '%s' - removing row from CSV. Please check and validate." % (key, census_division))
+                    continue
+
                             w.writerow([key] + value)
+
+        return merged_csv_path
+
+    def merge_and_get_csv_files_by_table_and_series():
+        csv_files_by_geog_and_table = get_csv_files_by_geography_and_table()
+        csv_files = []
+
+        for geography_name, tables in csv_files_by_geog_and_table.items():
+            # if geography_name != "lga":
+            #     continue
+
+            for table_name, csv_paths in csv_files_by_geog_and_table[geography_name].items():
+                # Merge the separate profile table/datapack CSVs into a single new  CSV file based on region_id (first column)
+                # if table_name != "g37":
+                #     continue
+
+                if len(csv_paths) > 1:
+                    merged_csv_path = merge_csv_files(table_name, csv_paths)
 
                     # Some tables are large (and have multiple datapacks), but no serises (e.g. X03)
                     # For these tables we just merge into one combined CSV file...
@@ -505,31 +529,48 @@ def load_datapacks(loader, census_dir, tmpdir, packname, abbrev, geo_gid_mapping
                         logger.info("%s: Split single datapack CSV file - %s" % (abbrev, ", ".join([os.path.basename(i) for i in split_csv_files])))
                         csv_files += split_csv_files
                     else:
+                        # FIXME If there's a gid missing in geo_gid_mapping then you need to fix this section
+                        # to remove the offending rows from csv files that we don't currently rewrite.
                         csv_files.append(csv_paths[0])
         return csv_files
+
+    def getGeometryNameFromTableName(table_name):
+        decoded = table_name.split('_')
+        if len(decoded) == 3:
+            # 2016Census_G01_AUS_CED.csv -> CED
+            census_division = decoded[2]
+        else:
+            # 2016Census_G01_AUS.csv -> Default: AUST
+            census_division = "AUST"
+
+        return census_division
+
+    def getTableNameFromCSVPath(csv_path):
+        """
+        Extract the a valid database table name from the path to a DataPack CSV file.
+
+        csv_path (string): /path/to/datapacks/..../2016Census_G58S3_AUS_LGA.tmp.csv
+            NB: May or may not include .tmp.csv (.tmp.csv only if we have to pre-process and split the file)
+
+        Returns:
+            g58s3_aus_lga
+        """
+        table_re = re.compile(r'^2016Census_(.*?)(.tmp)?.csv$')
+        return table_re.match(os.path.split(csv_path)[-1]).groups()[0].lower()
 
     d = os.path.join(census_dir, packname, "2016 Census %s All Geographies for AUST" % abbrev)
     csv_files = merge_and_get_csv_files_by_table_and_series()
 
-    table_re = re.compile(r'^2016Census_(.*?)(.tmp)?.csv$')
     linkage_pending = []
     data_tables = []
 
     for i, csv_path in enumerate(csv_files):
         logger.info("%s: [%d/%d] %s" % (abbrev, i + 1, len(csv_files), os.path.basename(csv_path)))
-        table_name = table_re.match(os.path.split(csv_path)[-1]).groups()[0].lower()
-
+        table_name = getTableNameFromCSVPath(csv_path)
         data_tables.append(table_name)
-        decoded = table_name.split('_')
+        census_division = getGeometryNameFromTableName(table_name)
 
-        if len(decoded) == 3:
-            census_division = decoded[2]
-        else:
-            census_division = None
-
-        gid_match = None
-
-        if census_division is not None:
+        if census_division is not "AUST":
             def make_match_fn():
                 lookup = geo_gid_mapping[census_division]
 
@@ -543,12 +584,10 @@ def load_datapacks(loader, census_dir, tmpdir, packname, abbrev, geo_gid_mapping
                         if row[0] in lookup:
                             return [str(lookup[row[0]])] + row
                         else:
-                            # Handle missing 9799 LGAs in 2016
-                            logger.error("failed gid lookup for '%s' for '%s'" % (row[0], census_division))
-                            return [row[0]] + row
+                            # Fail dramatically if any missing gids have made it this far
+                            raise Exception("failed gid lookup for '%s' for '%s'" % (row[0], census_division))
                 return _matcher
         else:
-            # For geometry AUST
             def make_match_fn():
                 def _matcher(line, row):
                     if line == 0:
@@ -565,7 +604,7 @@ def load_datapacks(loader, census_dir, tmpdir, packname, abbrev, geo_gid_mapping
         with RewrittenCSV(tmpdir, csv_path, gid_match) as norm:
             instance = CSVLoader(loader.dbschema(), table_name, norm.get(), pkey_column=0)
             table_info = instance.load(loader)
-            if table_info is not None and census_division is not None:
+            if table_info is not None and census_division is not "AUST":
                 linkage_pending.append((table_name, table_info, census_division))
 
         # Tidy up after ourselves
