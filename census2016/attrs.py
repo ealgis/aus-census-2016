@@ -614,7 +614,7 @@ def load_datapacks(loader, census_dir, tmpdir, packname, abbrev, geo_gid_mapping
 
     # done as another pass to avoid having to re-run the reflection of the entire
     # database for every CSV file loaded (can be thousands)
-    with ealdb.access_schema(SHAPE_SCHEMA) as geo_access:
+    with loader.access_schema(SHAPE_SCHEMA) as geo_access:
         for attr_table, table_info, census_division in linkage_pending:
             geo_column, _, _ = SHAPE_LINKAGE[census_division]
             loader.add_geolinkage(
