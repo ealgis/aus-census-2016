@@ -17,6 +17,7 @@ from collections import OrderedDict
 
 from ealgis_common.loaders import RewrittenCSV, CSVLoader
 from ealgis_common.util import alistdir, make_logger
+from ealgis_common.db import ealdb
 from .shapes import SHAPE_LINKAGE, SHAPE_SCHEMA
 from .attrs_repair import repair_census_metadata_first_pass, repair_census_metadata, repair_column_series_census_metadata
 
@@ -338,7 +339,7 @@ def load_metadata(loader, census_dir, xlsx_name, data_tables, columns_by_series)
         rows = list(set([c[1]["type"] for c in columns]))
         column_uids = list(set(["{}.{}".format(c[1]["type"], c[1]["kind"]) for c in columns]))
 
-        if isTableColumnMetadataValid(header, rows, column_uids) == False:
+        if not isTableColumnMetadataValid(header, rows, column_uids):
             logger.error("Table Header/Row mismatch found on table '{}' series '{}'".format(table_number, meta["series"]))
 
             for r in rows:
@@ -453,30 +454,30 @@ def load_datapacks(loader, census_dir, tmpdir, packname, abbrev, geo_gid_mapping
         return csv_files
 
     def merge_csv_files(table_name, csv_paths):
-                    dicts = []
+        dicts = []
 
-                    for i, csv_path in enumerate(csv_paths):
-                        with open(csv_path, "r") as f:
-                            r = csv.reader(f)
-                            if i == 0:
-                                dicts.append(OrderedDict((row[0], row[1:]) for row in r))
-                            else:
-                                dicts.append({row[0]: row[1:] for row in r})
+        for i, csv_path in enumerate(csv_paths):
+            with open(csv_path, "r") as f:
+                r = csv.reader(f)
+                if i == 0:
+                    dicts.append(OrderedDict((row[0], row[1:]) for row in r))
+                else:
+                    dicts.append({row[0]: row[1:] for row in r})
 
-                    result = OrderedDict()
-                    for d in tuple(dicts):
-                        for key, value in d.items():
-                            result.setdefault(key, []).extend(value)
+        result = OrderedDict()
+        for d in tuple(dicts):
+            for key, value in d.items():
+                result.setdefault(key, []).extend(value)
 
         census_division = getGeometryNameFromTableName(getTableNameFromCSVPath(csv_paths[0]))
 
-                    profiletable_name = os.path.basename(csv_paths[0]).split('_')[1]
-                    merged_csv_path = csv_paths[0].replace("_{}_".format(profiletable_name), "_{}_".format(table_name.upper())).replace(".csv", ".tmp.csv")
-                    with open(merged_csv_path, "w") as f:
-                        w = csv.writer(f)
+        profiletable_name = os.path.basename(csv_paths[0]).split('_')[1]
+        merged_csv_path = csv_paths[0].replace("_{}_".format(profiletable_name), "_{}_".format(table_name.upper())).replace(".csv", ".tmp.csv")
+        with open(merged_csv_path, "w") as f:
+            w = csv.writer(f)
 
             counter = 0
-                        for key, value in result.items():
+            for key, value in result.items():
                 # The 2016 Census LGAs shapefile was missing some null geometries - so we'll dump them here
                 # Ref. https://github.com/ealgis/aus-census-2016/issues/1
                 counter += 1
@@ -484,7 +485,7 @@ def load_datapacks(loader, census_dir, tmpdir, packname, abbrev, geo_gid_mapping
                     logger.error("failed gid lookup for '%s' for '%s' - removing row from CSV. Please check and validate." % (key, census_division))
                     continue
 
-                            w.writerow([key] + value)
+                w.writerow([key] + value)
 
         return merged_csv_path
 
@@ -613,7 +614,7 @@ def load_datapacks(loader, census_dir, tmpdir, packname, abbrev, geo_gid_mapping
 
     # done as another pass to avoid having to re-run the reflection of the entire
     # database for every CSV file loaded (can be thousands)
-    with loader.access_schema(SHAPE_SCHEMA) as geo_access:
+    with ealdb.access_schema(SHAPE_SCHEMA) as geo_access:
         for attr_table, table_info, census_division in linkage_pending:
             geo_column, _, _ = SHAPE_LINKAGE[census_division]
             loader.add_geolinkage(
@@ -625,21 +626,21 @@ def load_datapacks(loader, census_dir, tmpdir, packname, abbrev, geo_gid_mapping
 
 
 def build_geo_gid_mapping(factory):
-    shape_access = factory.make_schema_access(SHAPE_SCHEMA)
-    geo_gid_mapping = {}
-    for census_division in SHAPE_LINKAGE:
-        geo_column, geo_cast_required, _ = SHAPE_LINKAGE[census_division]
-        geo_cls = shape_access.get_table_class(census_division, refresh=True)
-        geo_attr = getattr(geo_cls, geo_column)
-        if geo_cast_required is not None:
-            inner_col = sqlalchemy.cast(geo_attr, geo_cast_required)
-        else:
-            inner_col = geo_attr
-        lookup = {}
-        for gid, match in shape_access.session.query(geo_cls.gid, inner_col).all():
-            lookup[str(match)] = gid
-        geo_gid_mapping[census_division] = lookup
-    return geo_gid_mapping
+    with factory.make_schema_access(SHAPE_SCHEMA) as shape_access:
+        geo_gid_mapping = {}
+        for census_division in SHAPE_LINKAGE:
+            geo_column, geo_cast_required, _ = SHAPE_LINKAGE[census_division]
+            geo_cls = shape_access.get_table_class(census_division, refresh=True)
+            geo_attr = getattr(geo_cls, geo_column)
+            if geo_cast_required is not None:
+                inner_col = sqlalchemy.cast(geo_attr, geo_cast_required)
+            else:
+                inner_col = geo_attr
+            lookup = {}
+            for gid, match in shape_access.session.query(geo_cls.gid, inner_col).all():
+                lookup[str(match)] = gid
+            geo_gid_mapping[census_division] = lookup
+        return geo_gid_mapping
 
 
 def load_attrs(factory, census_dir, tmpdir):
@@ -667,17 +668,17 @@ def load_attrs(factory, census_dir, tmpdir):
         dirname = '2016 ' + package_name
         package_dir = os.path.join(census_dir, dirname)
         schema_name = 'aus_census_2016_' + abbrev.lower()
-        loader = factory.make_loader(schema_name)
-        loader.add_dependency(SHAPE_SCHEMA)
-        loader.set_metadata(
-            name=package_name,
-            family="ABS Census 2016",
-            description=package_description,
-            date_published=datetime(2016, 6, 27, 3, 0, 0)  # Set in UTC
-        )
+        with factory.make_loader(schema_name) as loader:
+            loader.add_dependency(SHAPE_SCHEMA)
+            loader.set_metadata(
+                name=package_name,
+                family="ABS Census 2016",
+                description=package_description,
+                date_published=datetime(2016, 6, 27, 3, 0, 0)  # Set in UTC
+            )
 
-        columns_by_series, col_mapping = load_metadata_table_serises(loader, package_dir, metadata_filename)
-        data_tables = load_datapacks(loader, census_dir, tmpdir, dirname, abbrev, geo_gid_mapping, columns_by_series, col_mapping)
-        load_metadata(loader, package_dir, metadata_filename, data_tables, columns_by_series)
-        attr_results.append(loader.result())
+            columns_by_series, col_mapping = load_metadata_table_serises(loader, package_dir, metadata_filename)
+            data_tables = load_datapacks(loader, census_dir, tmpdir, dirname, abbrev, geo_gid_mapping, columns_by_series, col_mapping)
+            load_metadata(loader, package_dir, metadata_filename, data_tables, columns_by_series)
+            attr_results.append(loader.result())
     return attr_results
