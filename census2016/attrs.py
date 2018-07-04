@@ -175,7 +175,7 @@ def load_metadata_table_serises(loader, census_dir, xlsx_name):
         column_heading = repair_column_series_census_metadata(table_number, column_name.lower(), str(column_heading).strip())
         seriesName = getSeriesName(column_heading)
 
-        col_mapping[short_name] = column_name
+        col_mapping[(table_number.lower(), short_name.lower())] = column_name
 
         if seriesName is not None:
             if table_number not in col_meta:
@@ -568,6 +568,10 @@ def load_datapacks(loader, census_dir, tmpdir, packname, abbrev, geo_gid_mapping
     for i, csv_path in enumerate(csv_files):
         logger.info("%s: [%d/%d] %s" % (abbrev, i + 1, len(csv_files), os.path.basename(csv_path)))
         table_name = getTableNameFromCSVPath(csv_path)
+
+        m = re.match('^([a-z]+[0-9]+[a-z]{0,})(s[0-9]{1,2})?_.+', table_name.lower())
+        table_number = m.groups()[0]  # g14_aus_ssc -> g14; g23s1_aus_ssc -> g23
+
         data_tables.append(table_name)
         census_division = getGeometryNameFromTableName(table_name)
 
@@ -579,7 +583,7 @@ def load_datapacks(loader, census_dir, tmpdir, packname, abbrev, geo_gid_mapping
                     if line == 0:
                         # Rewrite the header
                         # Map from "Tot_P_M" (in the CSV header) to "G100" (in the database)
-                        return ['gid', 'region_id'] + [col_mapping[v] for v in row[1:]]
+                        return ['gid', 'region_id'] + [col_mapping[(table_number, v.lower())] for v in row[1:]]
                     else:
                         # Data rows
                         if row[0] in lookup:
@@ -593,7 +597,7 @@ def load_datapacks(loader, census_dir, tmpdir, packname, abbrev, geo_gid_mapping
                 def _matcher(line, row):
                     if line == 0:
                         # rewrite the header
-                        return ['gid', 'region_id'] + [col_mapping[v] for v in row[1:]]
+                        return ['gid', 'region_id'] + [col_mapping[(table_number, v.lower())] for v in row[1:]]
                     else:
                         # rewrite the single row with a gid of 1
                         return ["1"] + row
