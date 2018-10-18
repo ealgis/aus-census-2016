@@ -17,7 +17,6 @@ from collections import OrderedDict
 
 from ealgis_common.loaders import RewrittenCSV, CSVLoader
 from ealgis_common.util import alistdir, make_logger
-from ealgis_common.db import ealdb
 from .shapes import SHAPE_LINKAGE, SHAPE_SCHEMA
 from .attrs_repair import repair_census_metadata_first_pass, repair_census_metadata, repair_column_series_census_metadata
 
