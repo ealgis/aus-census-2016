@@ -123,7 +123,7 @@ def parseColumnMetadata(table_number, column_name, metadata):
     return metadata
 
 
-def load_metadata_table_serises(loader, census_dir, xlsx_name):
+def load_metadata_table_series(loader, census_dir, xlsx_name):
     """
     Parse Census metadata to extract the serises in each table.
 
@@ -148,7 +148,10 @@ def load_metadata_table_serises(loader, census_dir, xlsx_name):
     wb = openpyxl.load_workbook(fname, read_only=True)
 
     def sheet_data(sheet):
-        return ([t.value for t in r] for r in sheet.iter_rows() if r[0].value is not None)
+        return (
+            [t.value for t in r]
+            for r in sheet.iter_rows()
+            if len(r) > 0 and r[0].value is not None)
 
     def skip_to_descriptors(it):
         for row in it:
@@ -208,7 +211,10 @@ def load_metadata(loader, census_dir, xlsx_name, data_tables, columns_by_series,
     wb = openpyxl.load_workbook(fname, read_only=True)
 
     def sheet_data(sheet):
-        return ([t.value for t in r] for r in sheet.iter_rows() if r[0].value is not None)
+        return (
+            [t.value for t in r]
+            for r in sheet.iter_rows()
+            if len(r) > 0 and r[0].value is not None)
 
     def skip(it, n):
         for i in range(n):
@@ -730,7 +736,7 @@ def load_attrs(factory, census_dir, tmpdir):
         # session.execute("DROP SCHEMA IF EXISTS aus_census_2016_{} CASCADE".format(abbrev.lower()))
         # session.commit()
 
-        dirname = '2016 ' + package_name
+        dirname = abbrev
         package_dir = os.path.join(census_dir, dirname)
         schema_name = 'aus_census_2016_' + abbrev.lower()
         with factory.make_loader(schema_name) as loader:
@@ -742,7 +748,7 @@ def load_attrs(factory, census_dir, tmpdir):
                 date_published=datetime(2016, 6, 27, 3, 0, 0)  # Set in UTC
             )
 
-            columns_by_series, col_mapping = load_metadata_table_serises(loader, package_dir, metadata_filename)
+            columns_by_series, col_mapping = load_metadata_table_series(loader, package_dir, metadata_filename)
             data_tables, not_applicable_columns = load_datapacks(loader, census_dir, tmpdir, dirname, abbrev, geo_gid_mapping, columns_by_series, col_mapping)
             load_metadata(loader, package_dir, metadata_filename, data_tables, columns_by_series, not_applicable_columns)
             attr_results.append(loader.result())
